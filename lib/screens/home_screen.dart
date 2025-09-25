@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../main.dart'; // Import the BMI calculator
+import 'bmi_calculator_screen.dart'; // Import the BMI calculator screen
 import 'health_tips_screen.dart';
 import 'profile_screen.dart';
 import 'history_screen.dart';
@@ -91,7 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const MyApp()),
+                        MaterialPageRoute(builder: (context) => const BMICalculatorScreen()),
                       );
                     },
                   ),
