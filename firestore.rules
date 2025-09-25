@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// Allow public access for development purposes
+// In production, you should implement proper authentication
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow read/write access for authenticated users
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
