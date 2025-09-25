@@ -5,9 +5,8 @@ import 'package:bmi_app1/config/app_config.dart';
 import 'package:bmi_app1/constants/app_constants.dart';
 import 'package:bmi_app1/services/firebase_service.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
   runApp(const MyApp());
 }
 
@@ -24,8 +23,31 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
         textTheme: GoogleFonts.latoTextTheme(),
       ),
-      home: const MyHomePage(title: AppConfig.appName),
+      home: FutureBuilder(
+        future: _initializeFirebase(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+          }
+          return const MyHomePage(title: AppConfig.appName);
+        },
+      ),
     );
+  }
+  
+  Future<void> _initializeFirebase() async {
+    try {
+      // Try to initialize Firebase, but don't fail if it doesn't work
+      await Firebase.initializeApp();
+    } catch (e) {
+      // Consider using a proper logging solution in production
+      // log('Firebase initialization error: $e');
+      // Continue anyway so the app still works without Firebase
+    }
   }
 }
 
