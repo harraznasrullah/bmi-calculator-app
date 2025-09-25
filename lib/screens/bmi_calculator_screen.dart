@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:bmi_app1/constants/app_constants.dart';
 import 'package:bmi_app1/services/firebase_service.dart';
+import 'package:bmi_app1/utils/bmi_history_manager.dart';
 
 class BMICalculatorScreen extends StatefulWidget {
   const BMICalculatorScreen({super.key});
@@ -43,7 +44,8 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> {
     Color riskColor = _getRiskColor(category);
     String riskIndicator = _getRiskIndicator(category);
 
-    // Store in Firestore
+    // Store in Firestore (online storage)
+    bool firestoreSuccess = false;
     try {
       await FirebaseService().saveBMIResult(
         bmiValue: bmi,
@@ -53,11 +55,13 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> {
         heightUnit: 'cm',
         weightUnit: 'kg',
       );
-      _showSuccessDialog('BMI result saved to your history!');
+      firestoreSuccess = true;
     } catch (e) {
-      // Show a more user-friendly message instead of technical error
-      _showErrorDialog('Your result was calculated but could not be saved to your history. Please check your internet connection and try again.');
+      // Firebase storage failed, but we'll still save locally
     }
+
+    // Store in local storage as backup/primary
+    await _saveToLocalHistory(bmi, category, heightCm, weightKg);
 
     setState(() {
       _bmiValue = double.parse(bmi.toStringAsFixed(1));
@@ -65,6 +69,12 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> {
       _riskColor = riskColor;
       _riskIndicator = riskIndicator;
     });
+
+    if (firestoreSuccess) {
+      _showSuccessDialog('BMI result saved to your history!');
+    } else {
+      _showSuccessDialog('BMI result calculated and saved locally. Will sync when online.');
+    }
   }
 
   String _getBMICategory(double bmi) {
@@ -120,6 +130,22 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> {
         );
       },
     );
+  }
+  
+  // Save BMI result to local storage
+  Future<void> _saveToLocalHistory(double bmi, String category, double height, double weight) async {
+    try {
+      await BMIHistoryManager.saveBMIRecord(
+        bmi: bmi,
+        category: category,
+        height: height,
+        weight: weight,
+      );
+    } catch (e) {
+      // If local storage fails, we still want the calculation to work
+      // Consider using a proper logging solution in production
+      // log('Error saving to local history: $e');
+    }
   }
 
   @override

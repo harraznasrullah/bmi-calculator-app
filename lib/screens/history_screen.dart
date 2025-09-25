@@ -1,20 +1,72 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:bmi_app1/utils/bmi_history_manager.dart';
 
-class HistoryScreen extends StatelessWidget {
+class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Sample BMI history data
-    final List<BMIRecord> bmiRecords = [
-      BMIRecord(date: '2023-09-25', bmi: 24.5, category: 'Normal', weight: 72.0, height: 172.0),
-      BMIRecord(date: '2023-09-18', bmi: 25.1, category: 'Overweight', weight: 74.0, height: 172.0),
-      BMIRecord(date: '2023-09-11', bmi: 26.3, category: 'Overweight', weight: 76.0, height: 172.0),
-      BMIRecord(date: '2023-09-04', bmi: 27.0, category: 'Overweight', weight: 77.0, height: 172.0),
-      BMIRecord(date: '2023-08-28', bmi: 27.8, category: 'Overweight', weight: 78.0, height: 172.0),
-    ];
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
 
+class _HistoryScreenState extends State<HistoryScreen> {
+  List<Map<String, dynamic>> _bmiRecords = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final records = await BMIHistoryManager.getBMIHistory();
+      setState(() {
+        _bmiRecords = records;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _bmiRecords = [];
+        _isLoading = false;
+      });
+      // Show error dialog if needed
+      _showErrorDialog('Failed to load history: $e');
+    }
+  }
+
+  Future<void> _clearHistory() async {
+    await BMIHistoryManager.clearHistory();
+    setState(() {
+      _bmiRecords = [];
+    });
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Error'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
@@ -26,51 +78,85 @@ class HistoryScreen extends StatelessWidget {
           ),
         ),
         centerTitle: true,
-      ),
-      body: bmiRecords.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.history,
-                    size: 80,
-                    color: Colors.grey[400],
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'No BMI records yet',
-                    style: GoogleFonts.lato(
-                      fontSize: 18,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Calculate your BMI to see history',
-                    style: GoogleFonts.lato(
-                      fontSize: 14,
-                      color: Colors.grey[500],
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: ListView.builder(
-                itemCount: bmiRecords.length,
-                itemBuilder: (context, index) {
-                  final record = bmiRecords[index];
-                  return _buildHistoryCard(context, record);
-                },
-              ),
+        actions: [
+          if (_bmiRecords.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: () {
+                _showClearHistoryDialog();
+              },
             ),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : _bmiRecords.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.history,
+                        size: 80,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'No BMI records yet',
+                        style: GoogleFonts.lato(
+                          fontSize: 18,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Calculate your BMI to see history',
+                        style: GoogleFonts.lato(
+                          fontSize: 14,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadHistory,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: ListView.builder(
+                      itemCount: _bmiRecords.length,
+                      itemBuilder: (context, index) {
+                        final record = _bmiRecords[index];
+                        // Parse the date properly
+                        final date = DateTime.parse(record['date']);
+                        final formattedDate = "${date.day}/${date.month}/${date.year}";
+                        
+                        return _buildHistoryCard(
+                          context,
+                          formattedDate,
+                          record['bmi'],
+                          record['category'],
+                          record['weight'],
+                          record['height'],
+                        );
+                      },
+                    ),
+                  ),
+                ),
     );
   }
 
-  Widget _buildHistoryCard(BuildContext context, BMIRecord record) {
-    Color cardColor = _getCategoryColor(record.category);
+  Widget _buildHistoryCard(
+    BuildContext context,
+    String date,
+    double bmi,
+    String category,
+    double weight,
+    double height,
+  ) {
+    Color cardColor = _getCategoryColor(category);
     
     return Card(
       elevation: 3,
@@ -84,7 +170,7 @@ class HistoryScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  record.date,
+                  date,
                   style: GoogleFonts.lato(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -100,14 +186,14 @@ class HistoryScreen extends StatelessWidget {
                       width: 1,
                     ),
                   ),
-                  child: Text(
-                    record.category,
-                    style: TextStyle(
-                      color: cardColor,
-                      fontWeight: FontWeight.w600,
+                    child: Text(
+                      category,
+                      style: TextStyle(
+                        color: cardColor,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -116,7 +202,7 @@ class HistoryScreen extends StatelessWidget {
                 Expanded(
                   child: _buildInfoCard(
                     'BMI',
-                    record.bmi.toString(),
+                    bmi.toStringAsFixed(1),
                     Colors.blue,
                   ),
                 ),
@@ -124,7 +210,7 @@ class HistoryScreen extends StatelessWidget {
                 Expanded(
                   child: _buildInfoCard(
                     'Weight',
-                    '${record.weight} kg',
+                    '${weight.toStringAsFixed(1)} kg',
                     Colors.green,
                   ),
                 ),
@@ -132,7 +218,7 @@ class HistoryScreen extends StatelessWidget {
                 Expanded(
                   child: _buildInfoCard(
                     'Height',
-                    '${record.height} cm',
+                    '${height.toStringAsFixed(0)} cm',
                     Colors.orange,
                   ),
                 ),
@@ -148,20 +234,20 @@ class HistoryScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: color.withValues(alpha: 0.3),
-            width: 1,
-          ),
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: color.withValues(alpha: 0.3),
+          width: 1,
         ),
+      ),
       child: Column(
         children: [
           Text(
             title,
             style: TextStyle(
               fontSize: 12,
-              color: Colors.grey[600],
+              color: Colors.grey[700],
             ),
           ),
           Text(
@@ -191,20 +277,32 @@ class HistoryScreen extends StatelessWidget {
         return Colors.grey;
     }
   }
-}
 
-class BMIRecord {
-  final String date;
-  final double bmi;
-  final String category;
-  final double weight;
-  final double height;
-
-  BMIRecord({
-    required this.date,
-    required this.bmi,
-    required this.category,
-    required this.weight,
-    required this.height,
-  });
+  void _showClearHistoryDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Clear History'),
+          content: const Text('Are you sure you want to clear all BMI history? This action cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _clearHistory();
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              child: const Text('Clear'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
