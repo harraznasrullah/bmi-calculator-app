@@ -37,20 +37,72 @@ class OpenRouterService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final choices = data['choices'] as List;
-        if (choices.isNotEmpty) {
-          return choices[0]['message']['content'].toString().trim();
-        } else {
-          return "I couldn't generate health tips at the moment. Please try again later.";
+        if (data.containsKey('choices') && data['choices'].length > 0) {
+          final content = data['choices'][0]['message']['content'];
+          if (content != null) {
+            return content.toString().trim();
+          }
         }
+        // If API response format is unexpected, return a fallback
+        return _getFallbackTips(bmi, category);
       } else {
-        return "Sorry, I couldn't generate health tips right now. Please check your connection and try again.";
+        // Try to get more specific error information
+        try {
+          final errorData = jsonDecode(response.body);
+          final errorMessage = errorData['error']['message'];
+          // Consider using a proper logging solution in production
+          // log('OpenRouter API Error: $errorMessage');
+        } catch (error) {
+          // Consider using a proper logging solution in production
+          // log('OpenRouter API Error with status ${response.statusCode}');
+        }
+        return _getFallbackTips(bmi, category);
       }
     } catch (e) {
       // Consider using a proper logging solution in production
       // log('Error getting health tips: $e');
-      return "Sorry, I couldn't generate health tips right now. Please try again later.";
+      return _getFallbackTips(bmi, category);
     }
+  }
+
+  // Fallback tips when AI service is unavailable
+  static String _getFallbackTips(double bmi, String category) {
+    String tips = "Here are some personalized health tips based on your BMI ($bmi - $category):\n\n";
+
+    switch (category.toLowerCase()) {
+      case 'underweight':
+        tips += "• You're underweight. Consider consulting a nutritionist for healthy weight gain strategies.\n";
+        tips += "• Focus on nutrient-dense foods like nuts, avocados, and whole grains.\n";
+        tips += "• Include strength training exercises to build muscle mass.\n";
+        tips += "• Eat 5-6 small, frequent meals throughout the day.";
+        break;
+      case 'normal':
+        tips += "• Great job maintaining a healthy BMI! Keep up the good work.\n";
+        tips += "• Continue regular exercise (150 mins moderate activity per week).\n";
+        tips += "• Maintain balanced meals with fruits, vegetables, lean proteins.\n";
+        tips += "• Stay hydrated and get 7-9 hours of quality sleep nightly.";
+        break;
+      case 'overweight':
+        tips += "• You're slightly overweight. Try 30 mins of brisk walking daily.\n";
+        tips += "• Reduce portion sizes and limit processed foods.\n";
+        tips += "• Include both cardio and strength training exercises.\n";
+        tips += "• Aim to lose 0.5-1kg per week for sustainable results.";
+        break;
+      case 'obese':
+        tips += "• Focus on gradual weight loss through diet and exercise.\n";
+        tips += "• Start with low-impact activities like walking or swimming.\n";
+        tips += "• Reduce calorie intake by 500-750 calories per day.\n";
+        tips += "• Consider consulting a healthcare professional for support.";
+        break;
+      default:
+        tips += "• Maintain a balanced diet with plenty of fruits and vegetables.\n";
+        tips += "• Aim for 150 minutes of moderate exercise per week.\n";
+        tips += "• Stay hydrated and get adequate sleep for overall health.";
+    }
+
+    tips += "\n\nRemember to consult with a healthcare professional before making significant changes to your diet or exercise routine.";
+
+    return tips;
   }
 
   static String _generatePrompt(

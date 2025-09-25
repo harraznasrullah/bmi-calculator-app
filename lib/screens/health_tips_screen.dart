@@ -18,7 +18,10 @@ class _HealthTipsScreenState extends State<HealthTipsScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchPersonalizedTips();
+    _isLoading = true; // Show loading state initially
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchPersonalizedTips();
+    });
   }
 
   Future<void> _fetchPersonalizedTips() async {
