@@ -43,8 +43,8 @@ class OpenRouterService {
             return content.toString().trim();
           }
         }
-        // If API response format is unexpected, return a fallback
-        return _getFallbackTips(bmi, category);
+        // If API response format is unexpected, notify user and return a fallback
+        return "AI health tips are currently unavailable. Here are some general tips based on your BMI:\n\n${_getFallbackTips(bmi, category)}";
       } else {
         // Try to get more specific error information
         try {
@@ -56,12 +56,12 @@ class OpenRouterService {
           // Consider using a proper logging solution in production
           // log('OpenRouter API Error with status ${response.statusCode}');
         }
-        return _getFallbackTips(bmi, category);
+        return "AI health tips are currently unavailable. Here are some general tips based on your BMI:\n\n${_getFallbackTips(bmi, category)}";
       }
     } catch (e) {
       // Consider using a proper logging solution in production
       // log('Error getting health tips: $e');
-      return _getFallbackTips(bmi, category);
+      return "AI health tips are currently unavailable. Here are some general tips based on your BMI:\n\n${_getFallbackTips(bmi, category)}";
     }
   }
 
