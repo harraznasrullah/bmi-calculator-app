@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 
 class OpenRouterService {
@@ -18,46 +20,76 @@ class OpenRouterService {
       // Create a prompt based on the user's BMI and profile
       String prompt = _generatePrompt(bmi, category, height, weight, age, gender);
       
-      final response = await http.post(
-        Uri.parse(_apiUrl),
-        headers: {
-          "Authorization": "Bearer $_apiKey",
-          "Content-Type": "application/json",
-        },
-        body: jsonEncode({
-          "model": _model,
-          "messages": [
-            {
-              "role": "user",
-              "content": prompt
-            }
-          ],
-        }),
-      );
+      // Create HTTP client with timeout
+      final client = http.Client();
+      try {
+        final response = await client.post(
+          Uri.parse(_apiUrl),
+          headers: {
+            "Authorization": "Bearer $_apiKey",
+            "Content-Type": "application/json",
+          },
+          body: jsonEncode({
+            "model": _model,
+            "messages": [
+              {
+                "role": "user",
+                "content": prompt
+              }
+            ],
+          }),
+        ).timeout(const Duration(seconds: 15)); // 15 second timeout
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data.containsKey('choices') && data['choices'].length > 0) {
-          final content = data['choices'][0]['message']['content'];
-          if (content != null) {
-            return content.toString().trim();
+        if (response.statusCode == 200) {
+          // Parse and cast the JSON response
+          final Map<String, dynamic> data = jsonDecode(response.body);
+          
+          if (data.containsKey('choices') && data['choices'] is List && data['choices'].isNotEmpty) {
+            final List choices = data['choices'];
+            final choice = choices[0];
+            
+            if (choice is Map<String, dynamic> && choice.containsKey('message')) {
+              final message = choice['message'];
+              
+              if (message is Map<String, dynamic> && message.containsKey('content')) {
+                final content = message['content'];
+                
+                if (content is String) {
+                  return content.trim();
+                }
+              }
+            }
           }
+          
+          // If API response format is unexpected, notify user and return a fallback
+          return "AI health tips are currently unavailable. Here are some general tips based on your BMI:\n\n${_getFallbackTips(bmi, category)}";
+        } else {
+          // Try to get more specific error information
+          try {
+            final Map<String, dynamic> errorData = jsonDecode(response.body);
+            if (errorData.containsKey('error')) {
+              final errorInfo = errorData['error'];
+              if (errorInfo is Map<String, dynamic> && errorInfo.containsKey('message')) {
+                // Consider using a proper logging solution in production
+                // final String errorMessage = errorInfo['message'];
+                // log('OpenRouter API Error: $errorMessage');
+              }
+            }
+          } catch (error) {
+            // Consider using a proper logging solution in production
+            // log('OpenRouter API Error with status ${response.statusCode}');
+          }
+          return "AI health tips are currently unavailable. Here are some general tips based on your BMI:\n\n${_getFallbackTips(bmi, category)}";
         }
-        // If API response format is unexpected, notify user and return a fallback
-        return "AI health tips are currently unavailable. Here are some general tips based on your BMI:\n\n${_getFallbackTips(bmi, category)}";
-      } else {
-        // Try to get more specific error information
-        try {
-          final errorData = jsonDecode(response.body);
-          final errorMessage = errorData['error']['message'];
-          // Consider using a proper logging solution in production
-          // log('OpenRouter API Error: $errorMessage');
-        } catch (error) {
-          // Consider using a proper logging solution in production
-          // log('OpenRouter API Error with status ${response.statusCode}');
-        }
-        return "AI health tips are currently unavailable. Here are some general tips based on your BMI:\n\n${_getFallbackTips(bmi, category)}";
+      } finally {
+        client.close(); // Always close the client
       }
+    } on TimeoutException {
+      // Handle timeout specifically
+      return "AI health tips are currently unavailable. Here are some general tips based on your BMI:\n\n${_getFallbackTips(bmi, category)}";
+    } on SocketException {
+      // Handle network errors specifically
+      return "No internet connection. Here are some general tips based on your BMI:\n\n${_getFallbackTips(bmi, category)}";
     } catch (e) {
       // Consider using a proper logging solution in production
       // log('Error getting health tips: $e');
