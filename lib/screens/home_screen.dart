@@ -75,12 +75,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             
-            // Quick navigation grid
+            // Quick navigation grid - Using Expanded to allow scrolling if needed
             Expanded(
               child: GridView.count(
                 crossAxisCount: 2,
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
+                childAspectRatio: 0.9, // Add aspect ratio to better control card size
                 children: [
                   _buildDashboardCard(
                     context,
