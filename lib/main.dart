@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:bmi_app1/config/app_config.dart';
 import 'package:bmi_app1/constants/app_constants.dart';
 import 'package:bmi_app1/services/firebase_service.dart';
+import 'screens/home_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,7 +16,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: AppConfig.appName,
+      title: 'BMIGO Dashboard',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
@@ -33,7 +33,7 @@ class MyApp extends StatelessWidget {
               ),
             );
           }
-          return const MyHomePage(title: AppConfig.appName);
+          return const HomeScreen();
         },
       ),
     );
