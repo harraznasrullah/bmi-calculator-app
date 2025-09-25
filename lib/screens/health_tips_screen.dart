@@ -1,110 +1,283 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:bmi_app1/services/openrouter_service.dart';
+import 'package:bmi_app1/utils/bmi_history_manager.dart';
 
-class HealthTipsScreen extends StatelessWidget {
+class HealthTipsScreen extends StatefulWidget {
   const HealthTipsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Sample health tips data
-    final List<HealthTip> tips = [
-      HealthTip(
-        title: 'Stay Hydrated',
-        content: 'Drink at least 8 glasses of water daily to maintain good health and support weight management.',
-        icon: Icons.local_drink,
-        color: Colors.blue,
-      ),
-      HealthTip(
-        title: 'Exercise Regularly',
-        content: 'Aim for at least 150 minutes of moderate aerobic activity or 75 minutes of vigorous activity each week.',
-        icon: Icons.fitness_center,
-        color: Colors.green,
-      ),
-      HealthTip(
-        title: 'Eat Balanced Meals',
-        content: 'Include fruits, vegetables, lean proteins, and whole grains in your daily diet for optimal nutrition.',
-        icon: Icons.restaurant,
-        color: Colors.orange,
-      ),
-      HealthTip(
-        title: 'Get Quality Sleep',
-        content: 'Aim for 7-9 hours of sleep per night to support your body\'s recovery and overall health.',
-        icon: Icons.bed,
-        color: Colors.purple,
-      ),
-      HealthTip(
-        title: 'Monitor Your BMI',
-        content: 'Regularly check your BMI to track your weight management progress and maintain a healthy lifestyle.',
-        icon: Icons.monitor_heart,
-        color: Colors.red,
-      ),
-    ];
+  State<HealthTipsScreen> createState() => _HealthTipsScreenState();
+}
 
+class _HealthTipsScreenState extends State<HealthTipsScreen> {
+  String _healthTips = '';
+  bool _isLoading = false;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchPersonalizedTips();
+  }
+
+  Future<void> _fetchPersonalizedTips() async {
+    setState(() {
+      _isLoading = true;
+      _error = '';
+    });
+
+    try {
+      // Get the most recent BMI record
+      final records = await BMIHistoryManager.getBMIHistory();
+      
+      if (records.isEmpty) {
+        setState(() {
+          _healthTips = "No BMI history found. Calculate your BMI to get personalized health tips!";
+          _isLoading = false;
+        });
+        return;
+      }
+      
+      // Use the most recent BMI record
+      final recentRecord = records[0];
+      final bmi = recentRecord['bmi'];
+      final category = recentRecord['category'];
+      final height = recentRecord['height'];
+      final weight = recentRecord['weight'];
+      
+      // Get personalized health tips from AI
+      final tips = await OpenRouterService.getHealthTips(
+        bmi: bmi,
+        category: category,
+        height: height,
+        weight: weight,
+      );
+      
+      setState(() {
+        _healthTips = tips;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to load health tips: $e';
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(
-          'Health Tips',
+          'AI Health Tips',
           style: GoogleFonts.lato(
             fontSize: 22,
             fontWeight: FontWeight.bold,
           ),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _fetchPersonalizedTips,
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: ListView.builder(
-          itemCount: tips.length,
-          itemBuilder: (context, index) {
-            final tip = tips[index];
-            return _buildTipCard(context, tip);
-          },
-        ),
+        child: _isLoading
+            ? const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 20),
+                    Text('Generating personalized health tips...'),
+                  ],
+                ),
+              )
+            : _error.isNotEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          size: 60,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          _error,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.red,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                          onPressed: _fetchPersonalizedTips,
+                          child: const Text('Try Again'),
+                        ),
+                      ],
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _fetchPersonalizedTips,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Add a header
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Personalized Health Tips',
+                                  style: GoogleFonts.lato(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Based on your latest BMI calculation',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          // Display the AI-generated health tips
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.grey[300]!,
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              _healthTips,
+                              style: GoogleFonts.lato(
+                                fontSize: 16,
+                                height: 1.6,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          // Add general tips section if needed
+                          if (!_healthTips.contains('diet') && 
+                              !_healthTips.contains('exercise') && 
+                              !_healthTips.contains('tips'))
+                            _buildGeneralTipsSection(),
+                        ],
+                      ),
+                    ),
+                  ),
       ),
     );
   }
 
-  Widget _buildTipCard(BuildContext context, HealthTip tip) {
+  Widget _buildGeneralTipsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'General Health Tips',
+          style: GoogleFonts.lato(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildTipCard(
+          context,
+          'Stay Hydrated',
+          'Drink at least 8 glasses of water daily to maintain good health and support weight management.',
+          Icons.local_drink,
+          Colors.blue,
+        ),
+        _buildTipCard(
+          context,
+          'Exercise Regularly',
+          'Aim for at least 150 minutes of moderate aerobic activity or 75 minutes of vigorous activity each week.',
+          Icons.fitness_center,
+          Colors.green,
+        ),
+        _buildTipCard(
+          context,
+          'Eat Balanced Meals',
+          'Include fruits, vegetables, lean proteins, and whole grains in your daily diet for optimal nutrition.',
+          Icons.restaurant,
+          Colors.orange,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTipCard(
+    BuildContext context,
+    String title,
+    String content,
+    IconData icon,
+    Color color,
+  ) {
     return Card(
-      elevation: 3,
-      margin: const EdgeInsets.only(bottom: 15),
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 50,
-              height: 50,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: tip.color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: tip.color,
+                  color: color,
                   width: 1,
                 ),
               ),
               child: Icon(
-                tip.icon,
-                color: tip.color,
+                icon,
+                color: color,
+                size: 20,
               ),
             ),
-            const SizedBox(width: 15),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    tip.title,
+                    title,
                     style: GoogleFonts.lato(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   Text(
-                    tip.content,
+                    content,
                     style: GoogleFonts.lato(
                       fontSize: 14,
                       color: Colors.grey[700],
@@ -118,18 +291,4 @@ class HealthTipsScreen extends StatelessWidget {
       ),
     );
   }
-}
-
-class HealthTip {
-  final String title;
-  final String content;
-  final IconData icon;
-  final Color color;
-
-  HealthTip({
-    required this.title,
-    required this.content,
-    required this.icon,
-    required this.color,
-  });
 }
