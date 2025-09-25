@@ -18,6 +18,7 @@ class FirebaseService {
     required String weightUnit,
   }) async {
     try {
+      // Assuming there's an authenticated user - in a real app you'd get the user ID from auth
       await _firestore.collection('bmi_results').add({
         'bmiValue': bmiValue,
         'category': category,
@@ -26,6 +27,7 @@ class FirebaseService {
         'heightUnit': heightUnit,
         'weightUnit': weightUnit,
         'timestamp': FieldValue.serverTimestamp(),
+        // 'userId': FirebaseAuth.instance.currentUser?.uid, // Uncomment when using auth
       });
     } catch (e) {
       // Consider using a proper logging solution in production
