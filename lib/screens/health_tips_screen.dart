@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:bmi_app1/services/openrouter_service.dart';
 import 'package:bmi_app1/utils/bmi_history_manager.dart';
+import 'package:bmi_app1/services/health_tips_cache_service.dart';
 
 class HealthTipsScreen extends StatefulWidget {
   const HealthTipsScreen({super.key});
@@ -14,14 +15,57 @@ class _HealthTipsScreenState extends State<HealthTipsScreen> {
   String _healthTips = '';
   bool _isLoading = false;
   String _error = '';
+  final HealthTipsCacheService _cacheService = HealthTipsCacheService();
 
   @override
   void initState() {
     super.initState();
     _isLoading = true; // Show loading state initially
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _fetchPersonalizedTips();
+      _checkAndLoadTips();
     });
+  }
+
+  Future<void> _checkAndLoadTips() async {
+    try {
+      // Get the most recent BMI record
+      final records = await BMIHistoryManager.getBMIHistory();
+      
+      if (records.isEmpty) {
+        setState(() {
+          _healthTips = "No BMI history found. Calculate your BMI to get personalized health tips!";
+          _isLoading = false;
+        });
+        // Clear the cache if there's no BMI data
+        _cacheService.clearCache();
+        return;
+      }
+      
+      // Use the most recent BMI record
+      final recentRecord = records[0];
+      final bmi = recentRecord['bmi'];
+      final category = recentRecord['category'];
+      
+      // Check if we have valid cached tips for this BMI and category
+      final isValidCache = await _cacheService.isValidCache();
+      
+      if (isValidCache && _cacheService.hasCachedData) {
+        // Use cached tips
+        setState(() {
+          _healthTips = _cacheService.cachedHealthTips ?? '';
+          _error = _cacheService.cachedError ?? '';
+          _isLoading = false;
+        });
+      } else {
+        // Fetch new tips
+        _fetchPersonalizedTips();
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to load health tips: $e';
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _fetchPersonalizedTips() async {
@@ -39,6 +83,8 @@ class _HealthTipsScreenState extends State<HealthTipsScreen> {
           _healthTips = "No BMI history found. Calculate your BMI to get personalized health tips!";
           _isLoading = false;
         });
+        // Clear the cache if there's no BMI data
+        _cacheService.clearCache();
         return;
       }
       
@@ -57,11 +103,18 @@ class _HealthTipsScreenState extends State<HealthTipsScreen> {
         weight: weight,
       );
       
+      // Update the cache with new results
+      _cacheService.updateCache(tips, bmi, category, null);
+      
       setState(() {
         _healthTips = tips;
+        _error = '';
         _isLoading = false;
       });
     } catch (e) {
+      // Update cache with error as well
+      _cacheService.updateCache(null, null, null, 'Failed to load health tips: $e');
+      
       setState(() {
         _error = 'Failed to load health tips: $e';
         _isLoading = false;
