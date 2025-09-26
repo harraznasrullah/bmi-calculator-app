@@ -161,12 +161,6 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> {
           ),
         ),
         centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.pop(context);
-          },
-        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(Constants.standardPadding),
