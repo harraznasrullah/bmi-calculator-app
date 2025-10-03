@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:bmi_app1/constants/app_constants.dart';
 import 'package:bmi_app1/services/firebase_service.dart';
 import 'package:bmi_app1/utils/bmi_history_manager.dart';
+import 'package:bmi_app1/services/bmi_storage_service.dart';
+import 'package:bmi_app1/utils/event_bus.dart';
 
 class BMICalculatorScreen extends StatefulWidget {
   const BMICalculatorScreen({super.key});
@@ -11,7 +13,7 @@ class BMICalculatorScreen extends StatefulWidget {
   State<BMICalculatorScreen> createState() => _BMICalculatorScreenState();
 }
 
-class _BMICalculatorScreenState extends State<BMICalculatorScreen> {
+class _BMICalculatorScreenState extends State<BMICalculatorScreen> with WidgetsBindingObserver {
   final TextEditingController _heightController = TextEditingController();
   final TextEditingController _weightController = TextEditingController();
   
@@ -21,10 +23,40 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> {
   String? _riskIndicator;
 
   @override
+  void initState() {
+    super.initState();
+    _loadStoredBMI();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
   void dispose() {
     _heightController.dispose();
     _weightController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // Refresh the stored BMI when the screen comes back to the foreground
+      _loadStoredBMI();
+    }
+  }
+
+  // Load the stored BMI when the screen initializes
+  Future<void> _loadStoredBMI() async {
+    final storedBMI = await BMIStorageService.loadCurrentBMI();
+    if (storedBMI != null) {
+      setState(() {
+        _bmiValue = double.parse(storedBMI['bmi'].toStringAsFixed(1));
+        _bmiCategory = storedBMI['category'];
+        _riskColor = _getRiskColor(storedBMI['category']);
+        _riskIndicator = storedBMI['riskIndicator'];
+      });
+    }
   }
 
   void _calculateBMI() async {
@@ -62,6 +94,9 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> {
 
     // Store in local storage as backup/primary
     await _saveToLocalHistory(bmi, category, heightCm, weightKg);
+    
+    // Also store the current BMI for persistent display
+    await _saveCurrentBMI(bmi, category, heightCm, weightKg, riskIndicator);
 
     setState(() {
       _bmiValue = double.parse(bmi.toStringAsFixed(1));
@@ -75,6 +110,9 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> {
     } else {
       _showSuccessDialog('BMI result calculated and saved locally. Will sync when online.');
     }
+    
+    // Emit event to notify other screens that BMI was calculated
+    EventBus.instance.emit(Events.bmiCalculated);
   }
 
   String _getBMICategory(double bmi) {
@@ -145,6 +183,35 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> {
       // If local storage fails, we still want the calculation to work
       // Consider using a proper logging solution in production
       // log('Error saving to local history: $e');
+    }
+  }
+  
+  // Save current BMI for persistent display
+  Future<void> _saveCurrentBMI(double bmi, String category, double height, double weight, String riskIndicator) async {
+    try {
+      await BMIStorageService.saveCurrentBMI(
+        bmi: bmi,
+        category: category,
+        height: height,
+        weight: weight,
+        riskIndicator: riskIndicator,
+        date: DateTime.now().toIso8601String(),
+      );
+    } catch (e) {
+      // If saving current BMI fails, we still want the calculation to work
+      // Consider using a proper logging solution in production
+      // log('Error saving current BMI: $e');
+    }
+  }
+  
+  // Clear the current BMI
+  Future<void> _clearCurrentBMI() async {
+    try {
+      await BMIStorageService.clearCurrentBMI();
+    } catch (e) {
+      // If clearing the current BMI fails, just continue
+      // Consider using a proper logging solution in production
+      // log('Error clearing current BMI: $e');
     }
   }
 
@@ -304,6 +371,7 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> {
                       _weightController.clear();
                       _heightController.clear();
                     });
+                    _clearCurrentBMI();
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.grey[300],

@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "307801529381",
-    "project_id": "bmigo-97acc",
-    "storage_bucket": "bmigo-97acc.firebasestorage.app"
+    "project_number": "537793897821",
+    "project_id": "bmi-app-95958",
+    "storage_bucket": "bmi-app-95958.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:307801529381:android:f599920acea26a429df3cc",
+        "mobilesdk_app_id": "1:537793897821:android:de801c8fc81dc3e55174b4",
         "android_client_info": {
           "package_name": "com.example.bmi_app1"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyB8dnlfq0gJZ9xUBfXBZfV0GRM3DpshhP0"
+          "current_key": "AIzaSyCqOTHqoF7zsdjPyZ6qan2psqQHSKUNupk"
         }
       ],
       "services": {

@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:bmi_app1/services/openrouter_service.dart';
 import 'package:bmi_app1/utils/bmi_history_manager.dart';
 import 'package:bmi_app1/services/health_tips_cache_service.dart';
+import 'package:bmi_app1/utils/event_bus.dart';
 
 class HealthTipsScreen extends StatefulWidget {
   const HealthTipsScreen({super.key});
@@ -17,12 +19,21 @@ class _HealthTipsScreenState extends State<HealthTipsScreen> {
   String _error = '';
   final HealthTipsCacheService _cacheService = HealthTipsCacheService();
 
+  StreamSubscription<String>? _eventSubscription;
+
   @override
   void initState() {
     super.initState();
     _isLoading = true; // Show loading state initially
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAndLoadTips();
+    });
+    
+    // Listen for BMI calculation events to refresh health tips
+    _eventSubscription = EventBus.instance.stream.listen((event) {
+      if (event == Events.bmiCalculated) {
+        _checkAndLoadTips();
+      }
     });
   }
 
@@ -103,8 +114,8 @@ class _HealthTipsScreenState extends State<HealthTipsScreen> {
         weight: weight,
       );
       
-      // Update the cache with new results
-      _cacheService.updateCache(tips, bmi, category, null);
+      // Update the cache with new results, using formatted BMI for consistency
+      _cacheService.updateCache(tips, double.parse(bmi.toStringAsFixed(1)), category, null);
       
       setState(() {
         _healthTips = tips;
@@ -120,6 +131,12 @@ class _HealthTipsScreenState extends State<HealthTipsScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _eventSubscription?.cancel();
+    super.dispose();
   }
 
   @override

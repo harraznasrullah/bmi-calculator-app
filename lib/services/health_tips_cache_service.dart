@@ -30,8 +30,8 @@ class HealthTipsCacheService {
       final bmi = recentRecord['bmi'];
       final category = recentRecord['category'];
       
-      // Check if BMI and category match cached values
-      return _cachedBmi == bmi && _cachedCategory == category;
+      // Check if BMI and category match cached values (using rounded values for comparison)
+      return _cachedBmi?.toStringAsFixed(1) == bmi.toStringAsFixed(1) && _cachedCategory == category;
     } catch (e) {
       return false; // Error checking cache, so it's invalid
     }
@@ -40,7 +40,7 @@ class HealthTipsCacheService {
   // Update the cached data
   void updateCache(String? healthTips, double? bmi, String? category, String? error) {
     _cachedHealthTips = healthTips;
-    _cachedBmi = bmi;
+    _cachedBmi = bmi != null ? double.parse(bmi.toStringAsFixed(1)) : null;
     _cachedCategory = category;
     _cachedError = error;
   }

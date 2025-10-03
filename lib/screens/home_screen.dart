@@ -22,19 +22,22 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0; // Track current tab index
   
-  // List of screens for each tab
-  final List<Widget> _screens = [
-    const DashboardScreen(), // Dashboard tab
-    const BMICalculatorScreen(), // BMI Calculator tab
-    const HealthTipsScreen(), // Health Tips tab
-    const HistoryScreen(), // History tab
-    const SettingsScreen(), // Settings tab
-  ];
-  
   @override
   Widget build(BuildContext context) {
+    // Get a list of screens
+    final List<Widget> screens = [
+      const DashboardScreen(), // Dashboard tab
+      const BMICalculatorScreen(), // BMI Calculator tab
+      const HealthTipsScreen(), // Health Tips tab
+      const HistoryScreen(), // History tab
+      const SettingsScreen(), // Settings tab
+    ];
+    
     return Scaffold(
-      body: _screens[_currentIndex], // Show current screen based on selected tab
+      body: IndexedStack(
+        index: _currentIndex,
+        children: screens,
+      ),
       bottomNavigationBar: BottomNavBar(
         currentIndex: _currentIndex,
         onTap: (index) {

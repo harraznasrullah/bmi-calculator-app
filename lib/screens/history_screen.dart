@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:bmi_app1/utils/bmi_history_manager.dart';
+import 'package:bmi_app1/utils/event_bus.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -13,10 +15,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
   List<Map<String, dynamic>> _bmiRecords = [];
   bool _isLoading = true;
 
+  StreamSubscription<String>? _eventSubscription;
+
   @override
   void initState() {
     super.initState();
     _loadHistory();
+    
+    // Listen for BMI calculation events to refresh history
+    _eventSubscription = EventBus.instance.stream.listen((event) {
+      if (event == Events.bmiCalculated) {
+        _loadHistory();
+      }
+    });
   }
 
   Future<void> _loadHistory() async {
@@ -45,6 +56,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
     setState(() {
       _bmiRecords = [];
     });
+  }
+  
+  @override
+  void dispose() {
+    _eventSubscription?.cancel();
+    super.dispose();
   }
 
   void _showErrorDialog(String message) {
