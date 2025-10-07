@@ -1,5 +1,5 @@
-import 'package:bmi_app1/config/app_config.dart';
-import 'package:bmi_app1/constants/app_constants.dart';
+import 'package:bmi_calc/config/app_config.dart';
+import 'package:bmi_calc/constants/app_constants.dart';
 
 class BMIUtil {
   // Calculate BMI based on height and weight

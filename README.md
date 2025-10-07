@@ -1,6 +1,6 @@
 # BMI Calculator App
 
-A comprehensive Body Mass Index calculator application built with Flutter and Firebase. The app allows users to calculate their BMI using various units of measurement and provides visual feedback on their BMI category.
+A comprehensive Body Mass Index calculator application built with Flutter and Supabase. The app allows users to calculate their BMI using various units of measurement and provides visual feedback on their BMI category.
 
 ## Features
 
@@ -8,7 +8,7 @@ A comprehensive Body Mass Index calculator application built with Flutter and Fi
 - **Multiple Units**: Support for height in cm, m, or feet and weight in kg or lbs
 - **Visual Feedback**: Color-coded BMI categories (Underweight, Normal, Overweight, Obese)
 - **Responsive UI**: Clean, modern interface using Material Design principles
-- **Firebase Integration**: Ready for data storage and user authentication
+- **Supabase Integration**: Ready for data storage and user authentication
 - **Input Validation**: Range checks to ensure realistic height and weight values
 - **Reset Functionality**: Easy reset of calculation results
 
@@ -20,7 +20,7 @@ The app follows a clean architecture with organized components:
 - `lib/config/app_config.dart`: Application configuration and BMI categories
 - `lib/constants/app_constants.dart`: Constant values for UI and validation
 - `lib/utils/bmi_util.dart`: BMI calculation utilities and helper functions
-- `lib/services/firebase_service.dart`: Firebase integration services
+- `lib/services/supabase_service.dart`: Supabase integration services
 - `lib/models/bmi_result.dart`: Data model for BMI results
 
 ## Getting Started
@@ -53,17 +53,14 @@ flutter pub get
 flutter run
 ```
 
-### Firebase Setup (Optional)
+### Supabase Setup (Optional)
 
-To enable full Firebase functionality:
+To enable full Supabase functionality:
 
-1. Create a new Firebase project at [Firebase Console](https://console.firebase.google.com)
-2. Add an Android, iOS, or Web app to your Firebase project
-3. Download the configuration file (`google-services.json` for Android or `GoogleService-Info.plist` for iOS)
-4. Place the configuration file in the appropriate directory:
-   - Android: `android/app/`
-   - iOS: `ios/Runner/`
-   - Web: Update the web configuration in `web/index.html`
+1. Create a new Supabase project at [Supabase Dashboard](https://app.supabase.com)
+2. Get your Project URL and API Key from Project Settings > API
+3. Update the Supabase configuration in `lib/services/supabase_service.dart` with your credentials
+4. Set up your database tables according to the app's requirements
 
 ## Usage
 
@@ -79,13 +76,12 @@ To enable full Firebase functionality:
 - cupertino_icons: ^1.0.8
 - google_fonts: ^6.1.0
 - slide_to_act: ^2.0.1
-- firebase_core: ^3.15.2
-- cloud_firestore: ^5.6.12
+- supabase_flutter: ^2.0.0
 
-## Firebase Configuration
+## Supabase Configuration
 
-The app is configured with the following Firebase services:
-- Firestore Database (with security rules)
+The app is configured with the following Supabase services:
+- Database (with Row Level Security)
 - Authentication
 - Storage
 - Functions
@@ -96,7 +92,7 @@ The app uses a modular architecture:
 - **Configuration**: App settings and BMI categories
 - **Constants**: UI and validation parameters
 - **Utilities**: Helper functions for calculations
-- **Services**: Firebase integration services
+- **Services**: Supabase integration services
 - **Models**: Data models for results
 
 ## Contributing
@@ -114,5 +110,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Acknowledgments
 
 - [Flutter](https://flutter.dev/) for the amazing framework
-- [Firebase](https://firebase.google.com/) for backend services
+- [Supabase](https://supabase.com/) for backend services
 - [Google Fonts](https://fonts.google.com/) for typography options

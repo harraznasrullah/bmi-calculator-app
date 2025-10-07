@@ -2,8 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:animate_do/animate_do.dart';
-import 'package:bmi_app1/utils/bmi_history_manager.dart';
-import 'package:bmi_app1/utils/event_bus.dart';
+import 'package:bmi_calc/utils/bmi_history_manager.dart';
+import 'package:bmi_calc/utils/event_bus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:bmi_calc/services/supabase_service.dart';
+import 'package:bmi_calc/services/sync_service.dart';
 
 // Dashboard Screen Widget
 // This screen displays the user's BMI, health tips based on their BMI, and their name
@@ -19,20 +22,39 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   // Mock data for demonstration purposes
   double bmiValue = 0; // Initial BMI value (0 means empty)
   String bmiCategory = ''; // Initial BMI category (empty)
-  String userName = 'John Doe'; // Example user name
+  String userName = 'Guest'; // Default user name
 
   StreamSubscription<String>? _eventSubscription;
+  StreamSubscription<AuthState>? _authSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadLatestBMI();
+    _loadUserName(); // Load the user's name
     WidgetsBinding.instance.addObserver(this);
     
-    // Listen for BMI calculation events
+    // Listen for BMI calculation, login, logout, and sync events
     _eventSubscription = EventBus.instance.stream.listen((event) {
-      if (event == Events.bmiCalculated) {
+      if (event == Events.bmiCalculated ||
+          event == Events.userLoggedIn ||
+          event == Events.userSignedOut ||
+          event == 'sync_completed' ||
+          event == 'background_sync_completed') {
+        print('DEBUG: Dashboard received event: $event, refreshing BMI');
         _loadLatestBMI();
+      }
+    });
+    
+    // Listen for auth state changes to update the user name
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      final eventType = data.event;
+      if (eventType == AuthChangeEvent.signedIn || eventType == AuthChangeEvent.userUpdated) {
+        _loadUserName();
+      } else if (eventType == AuthChangeEvent.signedOut) {
+        setState(() {
+          userName = 'Guest';
+        });
       }
     });
   }
@@ -41,7 +63,46 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _eventSubscription?.cancel();
+    _authSubscription?.cancel();
     super.dispose();
+  }
+
+  // Load the current user's name
+  Future<void> _loadUserName() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        // Try to get the username from the profiles table
+        final response = await Supabase.instance.client
+            .from('profiles')
+            .select('username, full_name')
+            .eq('id', user.id)
+            .single();
+        
+        if (response != null) {
+          final userData = response as Map<String, dynamic>;
+          final username = userData['username'] ?? userData['full_name'] ?? (user.email != null ? user.email!.split('@')[0] : null);
+          setState(() {
+            userName = username ?? 'User';
+          });
+        } else {
+          // If no profile exists, use email or default
+          setState(() {
+            userName = (user.email != null ? user.email!.split('@')[0] : null) ?? 'User';
+          });
+        }
+      } else {
+        setState(() {
+          userName = 'Guest';
+        });
+      }
+    } catch (e) {
+      // If there's an error fetching the profile, use the email as fallback
+      final user = Supabase.instance.client.auth.currentUser;
+      setState(() {
+        userName = (user?.email != null ? user!.email!.split('@')[0] : null) ?? 'Guest';
+      });
+    }
   }
 
   @override
@@ -55,21 +116,33 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
 
   Future<void> _loadLatestBMI() async {
     try {
-      final records = await BMIHistoryManager.getBMIHistory();
+      print('DEBUG: Dashboard loading latest BMI...');
+      // Use sync service for offline-first BMI history
+      final records = await SyncService.getBMIHistoryWithSync();
+      print('DEBUG: Dashboard found ${records.length} records');
+
       if (records.isNotEmpty) {
         // Get the most recent record
         final latestRecord = records[0]; // Most recent is first in the list
-        
+        print('DEBUG: Latest record: $latestRecord');
+
+        // Handle both Supabase ('bmi_value') and local storage ('bmi') formats
+        final recordBmiValue = latestRecord['bmi_value'] ?? latestRecord['bmi'];
+
         // Only update state if the values have changed to avoid unnecessary rebuilds
-        if (bmiValue != latestRecord['bmi'] || bmiCategory != latestRecord['category']) {
+        if (bmiValue != recordBmiValue?.toDouble() || bmiCategory != latestRecord['category']) {
+          print('DEBUG: Dashboard updating BMI display to: $recordBmiValue, ${latestRecord['category']}');
           setState(() {
-            bmiValue = latestRecord['bmi'];
-            bmiCategory = latestRecord['category'];
+            bmiValue = recordBmiValue?.toDouble() ?? 0.0;
+            bmiCategory = latestRecord['category'] ?? '';
           });
+        } else {
+          print('DEBUG: Dashboard BMI unchanged, skipping update');
         }
       } else {
         // If no records exist, ensure we reset to empty state
         if (bmiValue != 0 || bmiCategory != '') {
+          print('DEBUG: Dashboard resetting to empty state');
           setState(() {
             bmiValue = 0;
             bmiCategory = '';

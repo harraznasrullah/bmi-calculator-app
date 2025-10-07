@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 class OpenRouterService {
   static const String _apiKey ="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";
   static const String _apiUrl = "https://openrouter.ai/api/v1/chat/completions";
-  static const String _model = "x-ai/grok-4-fast:free";
+  static const String _model = "deepseek/deepseek-chat-v3.1:free";
   static const String _siteUrl = "https://bmi-app.com"; // Your site URL
   static const String _siteName = "BMI App"; // Your site name
 

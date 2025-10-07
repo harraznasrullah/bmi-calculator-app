@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:bmi_app1/utils/bmi_history_manager.dart';
-import 'package:bmi_app1/utils/event_bus.dart';
+import 'package:bmi_calc/services/supabase_service.dart';
+import 'package:bmi_calc/services/sync_service.dart';
+import 'package:bmi_calc/utils/bmi_history_manager.dart';
+import 'package:bmi_calc/utils/event_bus.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -14,6 +16,7 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   List<Map<String, dynamic>> _bmiRecords = [];
   bool _isLoading = true;
+  bool _hasPendingSync = false;
 
   StreamSubscription<String>? _eventSubscription;
 
@@ -21,11 +24,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
   void initState() {
     super.initState();
     _loadHistory();
-    
-    // Listen for BMI calculation events to refresh history
+    _checkPendingSync();
+
+    // Listen for BMI calculation, login, logout, and sync events to refresh history
     _eventSubscription = EventBus.instance.stream.listen((event) {
-      if (event == Events.bmiCalculated) {
+      if (event == Events.bmiCalculated ||
+          event == Events.userLoggedIn ||
+          event == Events.userSignedOut ||
+          event == 'sync_completed' ||
+          event == 'background_sync_completed') {
         _loadHistory();
+        _checkPendingSync();
       }
     });
   }
@@ -36,7 +45,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     });
 
     try {
-      final records = await BMIHistoryManager.getBMIHistory();
+      // Use sync service for offline-first history
+      final records = await SyncService.getBMIHistoryWithSync();
       setState(() {
         _bmiRecords = records;
         _isLoading = false;
@@ -46,16 +56,48 @@ class _HistoryScreenState extends State<HistoryScreen> {
         _bmiRecords = [];
         _isLoading = false;
       });
-      // Show error dialog if needed
       _showErrorDialog('Failed to load history: $e');
     }
   }
 
   Future<void> _clearHistory() async {
-    await BMIHistoryManager.clearHistory();
-    setState(() {
-      _bmiRecords = [];
-    });
+    try {
+      // Check if user is authenticated
+      final user = SupabaseService.instance.getCurrentUser();
+      if (user != null) {
+        // If authenticated, clear from Supabase
+        await SupabaseService.instance.clearBMIHistory();
+      } else {
+        // If not authenticated, clear from local storage only
+        await BMIHistoryManager.clearHistory();
+      }
+      setState(() {
+        _bmiRecords = []; // Clear the local list
+      });
+    } catch (e) {
+      _showErrorDialog('Failed to clear history: $e');
+    }
+  }
+
+  Future<void> _checkPendingSync() async {
+    try {
+      final hasPending = await SyncService.hasPendingSync();
+      setState(() {
+        _hasPendingSync = hasPending;
+      });
+    } catch (e) {
+      // Error checking pending sync
+    }
+  }
+
+  Future<void> _syncNow() async {
+    try {
+      await SyncService.syncPendingRecords();
+      await _checkPendingSync();
+      _showSuccessDialog('Sync completed successfully!');
+    } catch (e) {
+      _showErrorDialog('Sync failed: $e');
+    }
   }
   
   @override
@@ -82,6 +124,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
+  void _showSuccessDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Success'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -96,6 +156,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ),
         centerTitle: true,
         actions: [
+          if (_hasPendingSync)
+            IconButton(
+              icon: const Icon(Icons.sync, color: Colors.orange),
+              onPressed: _syncNow,
+              tooltip: 'Sync pending records',
+            ),
           if (_bmiRecords.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.delete),
@@ -146,17 +212,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       itemCount: _bmiRecords.length,
                       itemBuilder: (context, index) {
                         final record = _bmiRecords[index];
-                        // Parse the date properly
-                        final date = DateTime.parse(record['date']);
+                        // Parse the date properly - handle both Supabase ('created_at') and local storage ('date')
+                        final dateString = record['created_at'] ?? record['date'];
+                        final date = DateTime.parse(dateString);
                         final formattedDate = "${date.day}/${date.month}/${date.year}";
                         
                         return _buildHistoryCard(
                           context,
                           formattedDate,
-                          record['bmi'],
+                          (record['bmi_value'] ?? record['bmi'])?.toDouble() ?? 0.0,
                           record['category'],
-                          record['weight'],
-                          record['height'],
+                          record['weight']?.toDouble() ?? 0.0,
+                          record['height']?.toDouble() ?? 0.0,
                         );
                       },
                     ),

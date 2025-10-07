@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:bmi_app1/services/openrouter_service.dart';
-import 'package:bmi_app1/utils/bmi_history_manager.dart';
-import 'package:bmi_app1/services/health_tips_cache_service.dart';
-import 'package:bmi_app1/utils/event_bus.dart';
+import 'package:bmi_calc/services/openrouter_service.dart';
+import 'package:bmi_calc/services/supabase_service.dart';
+import 'package:bmi_calc/utils/bmi_history_manager.dart';
+import 'package:bmi_calc/services/health_tips_cache_service.dart';
+import 'package:bmi_calc/utils/event_bus.dart';
 
 class HealthTipsScreen extends StatefulWidget {
   const HealthTipsScreen({super.key});
@@ -39,8 +40,17 @@ class _HealthTipsScreenState extends State<HealthTipsScreen> {
 
   Future<void> _checkAndLoadTips() async {
     try {
-      // Get the most recent BMI record
-      final records = await BMIHistoryManager.getBMIHistory();
+      // Check if user is authenticated to decide where to get the data from
+      final user = SupabaseService.instance.getCurrentUser();
+      List<Map<String, dynamic>> records = [];
+
+      if (user != null) {
+        // If authenticated, get data from Supabase
+        records = await SupabaseService.instance.getBMIHistory();
+      } else {
+        // If not authenticated, get data from local storage
+        records = await BMIHistoryManager.getBMIHistory();
+      }
       
       if (records.isEmpty) {
         setState(() {
@@ -54,7 +64,8 @@ class _HealthTipsScreenState extends State<HealthTipsScreen> {
       
       // Use the most recent BMI record
       final recentRecord = records[0];
-      final bmi = recentRecord['bmi'];
+      // Use the correct field names depending on the source
+      final bmi = user != null ? recentRecord['bmi_value'] : recentRecord['bmi'];
       final category = recentRecord['category'];
       
       // Check if we have valid cached tips for this BMI and category
@@ -86,8 +97,17 @@ class _HealthTipsScreenState extends State<HealthTipsScreen> {
     });
 
     try {
-      // Get the most recent BMI record
-      final records = await BMIHistoryManager.getBMIHistory();
+      // Check if user is authenticated to decide where to get the data from
+      final user = SupabaseService.instance.getCurrentUser();
+      List<Map<String, dynamic>> records = [];
+
+      if (user != null) {
+        // If authenticated, get data from Supabase
+        records = await SupabaseService.instance.getBMIHistory();
+      } else {
+        // If not authenticated, get data from local storage
+        records = await BMIHistoryManager.getBMIHistory();
+      }
       
       if (records.isEmpty) {
         setState(() {
@@ -101,21 +121,22 @@ class _HealthTipsScreenState extends State<HealthTipsScreen> {
       
       // Use the most recent BMI record
       final recentRecord = records[0];
-      final bmi = recentRecord['bmi'];
+      // Use the correct field names depending on the source
+      final bmi = user != null ? recentRecord['bmi_value'] : recentRecord['bmi'];
       final category = recentRecord['category'];
-      final height = recentRecord['height'];
-      final weight = recentRecord['weight'];
+      final height = user != null ? recentRecord['height'] : recentRecord['height'];
+      final weight = user != null ? recentRecord['weight'] : recentRecord['weight'];
       
       // Get personalized health tips from AI
       final tips = await OpenRouterService.getHealthTips(
-        bmi: bmi,
+        bmi: bmi.toDouble(),
         category: category,
-        height: height,
-        weight: weight,
+        height: height.toDouble(),
+        weight: weight.toDouble(),
       );
       
       // Update the cache with new results, using formatted BMI for consistency
-      _cacheService.updateCache(tips, double.parse(bmi.toStringAsFixed(1)), category, null);
+      _cacheService.updateCache(tips, bmi.toDouble(), category, null);
       
       setState(() {
         _healthTips = tips;

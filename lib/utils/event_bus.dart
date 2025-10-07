@@ -20,4 +20,6 @@ class EventBus {
 
 class Events {
   static const String bmiCalculated = 'bmi_calculated';
+  static const String userLoggedIn = 'user_logged_in';
+  static const String userSignedOut = 'user_signed_out';
 }

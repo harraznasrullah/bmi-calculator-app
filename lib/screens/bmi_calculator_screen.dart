@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:bmi_app1/constants/app_constants.dart';
-import 'package:bmi_app1/services/firebase_service.dart';
-import 'package:bmi_app1/utils/bmi_history_manager.dart';
-import 'package:bmi_app1/services/bmi_storage_service.dart';
-import 'package:bmi_app1/utils/event_bus.dart';
+import 'package:bmi_calc/constants/app_constants.dart';
+import 'package:bmi_calc/services/supabase_service.dart';
+import 'package:bmi_calc/services/sync_service.dart';
+import 'package:bmi_calc/utils/bmi_history_manager.dart';
+import 'package:bmi_calc/services/bmi_storage_service.dart';
+import 'package:bmi_calc/utils/event_bus.dart';
 
 class BMICalculatorScreen extends StatefulWidget {
   const BMICalculatorScreen({super.key});
@@ -76,24 +77,15 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> with WidgetsB
     Color riskColor = _getRiskColor(category);
     String riskIndicator = _getRiskIndicator(category);
 
-    // Store in Firestore (online storage)
-    bool firestoreSuccess = false;
-    try {
-      await FirebaseService().saveBMIResult(
-        bmiValue: bmi,
-        category: category,
-        height: heightCm,
-        weight: weightKg,
-        heightUnit: 'cm',
-        weightUnit: 'kg',
-      );
-      firestoreSuccess = true;
-    } catch (e) {
-      // Firebase storage failed, but we'll still save locally
-    }
-
-    // Store in local storage as backup/primary
-    await _saveToLocalHistory(bmi, category, heightCm, weightKg);
+    // Store with automatic sync capability
+    await SyncService.saveBMIWithSync(
+      bmiValue: bmi,
+      category: category,
+      height: heightCm,
+      weight: weightKg,
+      heightUnit: 'cm',
+      weightUnit: 'kg',
+    );
     
     // Also store the current BMI for persistent display
     await _saveCurrentBMI(bmi, category, heightCm, weightKg, riskIndicator);
@@ -105,13 +97,11 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> with WidgetsB
       _riskIndicator = riskIndicator;
     });
 
-    if (firestoreSuccess) {
-      _showSuccessDialog('BMI result saved to your history!');
-    } else {
-      _showSuccessDialog('BMI result calculated and saved locally. Will sync when online.');
-    }
+    // Show success message
+    _showSuccessDialog('BMI result saved to your history!');
     
     // Emit event to notify other screens that BMI was calculated
+    print('DEBUG: Emitting BMI calculated event');
     EventBus.instance.emit(Events.bmiCalculated);
   }
 

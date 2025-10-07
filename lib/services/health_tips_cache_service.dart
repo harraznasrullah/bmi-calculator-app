@@ -1,4 +1,4 @@
-import 'package:bmi_app1/utils/bmi_history_manager.dart';
+import 'package:bmi_calc/utils/bmi_history_manager.dart';
 
 class HealthTipsCacheService {
   static final HealthTipsCacheService _instance = HealthTipsCacheService._internal();
