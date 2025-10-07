@@ -17,8 +17,13 @@ class OpenRouterService {
     double? weight,
     int? age,
     String? gender,
+    String? userName,
   }) async {
     try {
+      print('DEBUG: OpenRouter.getHealthTips called with:');
+      print('DEBUG: BMI: $bmi, Category: $category, Height: $height, Weight: $weight');
+      print('DEBUG: Age: $age, Gender: $gender, UserName: $userName');
+
       // Create a prompt based on the user's BMI and profile
       String prompt = _generatePrompt(
         bmi,
@@ -27,7 +32,10 @@ class OpenRouterService {
         weight,
         age,
         gender,
+        userName,
       );
+
+      print('DEBUG: Generated prompt length: ${prompt.length}');
 
       // Create HTTP client with timeout
       final client = http.Client();
@@ -227,14 +235,27 @@ class OpenRouterService {
     double? weight,
     int? age,
     String? gender,
+    String? userName,
   ) {
-    String userProfile =
-        "Your BMI is ${bmi.toStringAsFixed(1)} which is categorized as $category.";
+    String userProfile = "=== PATIENT PROFILE ===\n";
 
-    if (height != null) userProfile += " Your height is ${height}cm.";
-    if (weight != null) userProfile += " Your weight is ${weight}kg.";
-    if (age != null) userProfile += " You are $age years old.";
-    if (gender != null) userProfile += " Your gender is $gender.";
+    if (userName != null && userName.isNotEmpty) {
+      userProfile += "👤 Name: $userName\n";
+    }
+    userProfile += "📊 BMI: ${bmi.toStringAsFixed(1)} ($category)\n";
+
+    if (age != null) {
+      userProfile += "👤 Age: $age years old\n";
+      String ageGroup = _getAgeGroup(age);
+      userProfile += "🔸 Life Stage: $ageGroup\n";
+    }
+
+    if (gender != null) {
+      userProfile += "⚧ Gender: $gender\n";
+    }
+
+    if (height != null) userProfile += "📏 Height: ${height}cm\n";
+    if (weight != null) userProfile += "⚖️ Weight: ${weight}kg\n";
 
     return '''$userProfile
 
@@ -278,6 +299,16 @@ Make the advice age and BMI appropriate. Keep it positive, supportive, and actio
 
 Avoid medical disclaimers as they will be added separately.
 ''';
+  }
+
+  static String _getAgeGroup(int age) {
+    if (age < 18) return 'Adolescent';
+    if (age < 25) return 'Young Adult';
+    if (age < 35) return 'Adult';
+    if (age < 45) return 'Middle-aged Adult';
+    if (age < 55) return 'Adult';
+    if (age < 65) return 'Senior Adult';
+    return 'Elder';
   }
 
   static String _getFallbackTips(double bmi, String category) {

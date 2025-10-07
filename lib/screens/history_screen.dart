@@ -147,6 +147,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        leading: IconButton(
+          icon: const Icon(Icons.refresh),
+          onPressed: _loadHistory,
+          tooltip: 'Refresh history',
+        ),
         title: Text(
           'BMI History',
           style: GoogleFonts.lato(
@@ -224,6 +229,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           record['category'],
                           record['weight']?.toDouble() ?? 0.0,
                           record['height']?.toDouble() ?? 0.0,
+                          record['age']?.toInt(),
+                          record['gender'],
                         );
                       },
                     ),
@@ -239,9 +246,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
     String category,
     double weight,
     double height,
+    int? age,
+    String? gender,
   ) {
     Color cardColor = _getCategoryColor(category);
-    
+
     return Card(
       elevation: 3,
       margin: const EdgeInsets.only(bottom: 15),
@@ -270,14 +279,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       width: 1,
                     ),
                   ),
-                    child: Text(
-                      category,
-                      style: TextStyle(
-                        color: cardColor,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  child: Text(
+                    category,
+                    style: TextStyle(
+                      color: cardColor,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
+                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -308,6 +317,36 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
               ],
             ),
+            // Age and Gender row
+            if (age != null || gender != null) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  if (age != null) ...[
+                    Expanded(
+                      child: _buildInfoCard(
+                        'Age',
+                        '$age years',
+                        Colors.purple,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  if (gender != null) ...[
+                    Expanded(
+                      child: _buildInfoCard(
+                        'Gender',
+                        gender!,
+                        Colors.teal,
+                      ),
+                    ),
+                    if (age == null) const SizedBox(width: 10),
+                  ],
+                  if (age == null && gender != null)
+                    Expanded(child: Container()), // Spacer for alignment
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -350,15 +389,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Color _getCategoryColor(String category) {
     switch (category) {
       case 'Underweight':
-        return Colors.blue;
+        return const Color(0xFF1565C0); // Deep Blue - concerning
       case 'Normal':
-        return Colors.green;
+      case 'Normal weight':
+      case 'Healthy weight':
+        return const Color(0xFF2E7D32); // Dark Green - healthy
       case 'Overweight':
-        return Colors.orange;
+        return const Color(0xFFF57C00); // Deep Orange - warning
       case 'Obese':
-        return Colors.red;
+        return const Color(0xFFC62828); // Dark Red - serious health risk
       default:
-        return Colors.grey;
+        return Colors.grey[600]!;
     }
   }
 

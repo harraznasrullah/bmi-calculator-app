@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bmi_calc/services/supabase_service.dart';
+import 'package:bmi_calc/services/bmi_storage_service.dart';
 import 'package:bmi_calc/utils/bmi_history_manager.dart';
 import 'package:bmi_calc/utils/event_bus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -18,6 +19,8 @@ class SyncService {
     required double weight,
     required String heightUnit,
     required String weightUnit,
+    int? age,
+    String? gender,
   }) async {
     try {
       final user = SupabaseService.instance.getCurrentUser();
@@ -32,9 +35,11 @@ class SyncService {
             weight: weight,
             heightUnit: heightUnit,
             weightUnit: weightUnit,
+            age: age,
+            gender: gender,
           );
           // If successful, save locally for offline access
-          await _saveToLocalCache(bmiValue, category, height, weight);
+          await _saveToLocalCache(bmiValue, category, height, weight, age, gender);
         } catch (e) {
           // Supabase failed, save to pending sync queue
           await _saveToPendingSync(
@@ -44,6 +49,8 @@ class SyncService {
             weight: weight,
             heightUnit: heightUnit,
             weightUnit: weightUnit,
+            age: age,
+            gender: gender,
           );
           // Also save to local storage for immediate access
           await BMIHistoryManager.saveBMIRecord(
@@ -51,6 +58,8 @@ class SyncService {
             category: category,
             height: height,
             weight: weight,
+            age: age,
+            gender: gender,
           );
           print('DEBUG: BMI saved locally due to offline/failed connection');
         }
@@ -61,6 +70,8 @@ class SyncService {
           category: category,
           height: height,
           weight: weight,
+          age: age,
+          gender: gender,
         );
         print('DEBUG: BMI saved locally for guest user');
       }
@@ -71,40 +82,52 @@ class SyncService {
         category: category,
         height: height,
         weight: weight,
+        age: age,
+        gender: gender,
       );
     }
   }
 
   // Get BMI history with offline support
-  static Future<List<Map<String, dynamic>>> getBMIHistoryWithSync() async {
+  static Future<List<Map<String, dynamic>>> getBMIHistoryWithSync({bool prioritizeLatest = false}) async {
     try {
       final user = SupabaseService.instance.getCurrentUser();
       print('DEBUG: SyncService getting BMI history, user logged in: ${user != null}');
 
       if (user != null) {
-        // User is logged in - ALWAYS get local records first (includes new offline entries)
+        // User is logged in
         final localRecords = await BMIHistoryManager.getBMIHistory();
         print('DEBUG: SyncService got ${localRecords.length} local records first');
 
-        // CRITICAL FIX: If we have local records, ensure the latest one is immediately available
-        if (localRecords.isNotEmpty) {
+        if (prioritizeLatest && localRecords.isNotEmpty) {
+          // For dashboard display, prioritize latest local record for immediate display
           print('DEBUG: SyncService immediately returning local records to ensure latest BMI shows in dashboard');
-          // For dashboard display, we only need the latest record to show immediately
-          // The background sync will handle merging with online data
           return localRecords;
         }
 
-        // Only try to get online records if we have no local records
+        // For history display, get both online and local records and merge them
         try {
           final onlineRecords = await SupabaseService.instance.getBMIHistory();
           print('DEBUG: SyncService got ${onlineRecords.length} online records');
+
           // Cache the online records for offline access
           await _cacheOnlineRecords(onlineRecords);
-          return onlineRecords;
+
+          // Merge online and local records (online records take precedence for duplicates)
+          final mergedRecords = await _mergeOnlineAndLocalRecords(onlineRecords, localRecords);
+          print('DEBUG: SyncService returning ${mergedRecords.length} merged records');
+          return mergedRecords;
         } catch (e) {
           // Supabase failed (offline), use cached records
           print('DEBUG: SyncService offline mode, getting cached records');
           final cachedRecords = await _getCachedRecords();
+
+          if (localRecords.isNotEmpty) {
+            // Merge cached records with local records
+            final mergedRecords = await _mergeOnlineAndLocalRecords(cachedRecords, localRecords);
+            return mergedRecords;
+          }
+
           return cachedRecords;
         }
       } else {
@@ -141,6 +164,8 @@ class SyncService {
             weight: record['weight'],
             heightUnit: record['height_unit'],
             weightUnit: record['weight_unit'],
+            age: record['age']?.toInt(),
+            gender: record['gender'],
           );
           syncedCount++;
         } catch (e) {
@@ -184,6 +209,8 @@ class SyncService {
     required double weight,
     required String heightUnit,
     required String weightUnit,
+    int? age,
+    String? gender,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final List<String> pendingList = prefs.getStringList(_pendingSyncKey) ?? [];
@@ -197,6 +224,8 @@ class SyncService {
       'weight_unit': weightUnit,
       'created_at': DateTime.now().toIso8601String(),
       'pending_sync': true,
+      if (age != null) 'age': age,
+      if (gender != null) 'gender': gender,
     };
 
     pendingList.add(jsonEncode(record));
@@ -230,6 +259,8 @@ class SyncService {
     String category,
     double height,
     double weight,
+    int? age,
+    String? gender,
   ) async {
     final prefs = await SharedPreferences.getInstance();
     final List<String> cachedList = prefs.getStringList(_cachedHistoryKey) ?? [];
@@ -241,6 +272,8 @@ class SyncService {
       'weight': weight,
       'created_at': DateTime.now().toIso8601String(),
       'cached': true,
+      if (age != null) 'age': age,
+      if (gender != null) 'gender': gender,
     };
 
     // Add to beginning of list and keep only last 50 records
@@ -359,6 +392,83 @@ class SyncService {
     }
 
     return uniqueRecords;
+  }
+
+  // Check if local BMI data exists
+  static Future<bool> hasLocalBMIData() async {
+    try {
+      final localRecords = await BMIHistoryManager.getBMIHistory();
+      return localRecords.isNotEmpty;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Get local BMI data count
+  static Future<int> getLocalBMIDataCount() async {
+    try {
+      final localRecords = await BMIHistoryManager.getBMIHistory();
+      return localRecords.length;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Transfer all local BMI data to Supabase
+  static Future<bool> transferLocalBMIDataToAccount() async {
+    try {
+      final user = SupabaseService.instance.getCurrentUser();
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final localRecords = await BMIHistoryManager.getBMIHistory();
+      if (localRecords.isEmpty) {
+        return true; // No data to transfer
+      }
+
+      print('DEBUG: Transferring ${localRecords.length} local BMI records to account');
+
+      // Get user profile data
+      final userProfile = await BMIStorageService.loadUserProfile();
+      final userAge = userProfile?['age']?.toInt();
+      final userGender = userProfile?['gender'];
+
+      // Transfer each record to Supabase
+      int successCount = 0;
+      for (final record in localRecords) {
+        try {
+          await SupabaseService.instance.saveBMIResult(
+            bmiValue: double.parse(record['bmi'].toString()),
+            category: record['category'],
+            height: double.parse(record['height'].toString()),
+            weight: double.parse(record['weight'].toString()),
+            heightUnit: 'cm',
+            weightUnit: 'kg',
+            age: userAge, // Use profile age if available
+            gender: userGender, // Use profile gender if available
+          );
+          successCount++;
+        } catch (e) {
+          print('DEBUG: Failed to transfer individual record: $e');
+          // Continue with other records even if one fails
+        }
+      }
+
+      if (successCount > 0) {
+        // Clear local data after successful transfer
+        await BMIHistoryManager.clearHistory();
+        await BMIStorageService.clearCurrentBMI();
+        print('DEBUG: Successfully transferred $successCount BMI records to account');
+        return true;
+      } else {
+        print('DEBUG: Failed to transfer any BMI records');
+        return false;
+      }
+    } catch (e) {
+      print('DEBUG: Failed to transfer BMI data: $e');
+      return false;
+    }
   }
 
   // Clear all cached data (useful for logout)

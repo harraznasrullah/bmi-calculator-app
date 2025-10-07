@@ -6,6 +6,7 @@ import 'package:bmi_calc/services/sync_service.dart';
 import 'package:bmi_calc/utils/bmi_history_manager.dart';
 import 'package:bmi_calc/services/bmi_storage_service.dart';
 import 'package:bmi_calc/utils/event_bus.dart';
+import 'package:bmi_calc/utils/bmi_util.dart';
 
 class BMICalculatorScreen extends StatefulWidget {
   const BMICalculatorScreen({super.key});
@@ -17,16 +18,20 @@ class BMICalculatorScreen extends StatefulWidget {
 class _BMICalculatorScreenState extends State<BMICalculatorScreen> with WidgetsBindingObserver {
   final TextEditingController _heightController = TextEditingController();
   final TextEditingController _weightController = TextEditingController();
-  
+  final TextEditingController _ageController = TextEditingController();
+
   double? _bmiValue;
   String? _bmiCategory;
   Color? _riskColor;
   String? _riskIndicator;
+  String? _selectedGender;
+  int? _userAge;
 
   @override
   void initState() {
     super.initState();
     _loadStoredBMI();
+    _loadUserProfile();
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -34,6 +39,7 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> with WidgetsB
   void dispose() {
     _heightController.dispose();
     _weightController.dispose();
+    _ageController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -60,20 +66,51 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> with WidgetsB
     }
   }
 
+  // Load user profile data
+  Future<void> _loadUserProfile() async {
+    final profile = await BMIStorageService.loadUserProfile();
+    if (profile != null) {
+      setState(() {
+        _userAge = profile['age']?.toInt();
+        _selectedGender = profile['gender'];
+        if (_userAge != null) {
+          _ageController.text = _userAge.toString();
+        }
+      });
+    }
+  }
+
   void _calculateBMI() async {
     double? heightCm = double.tryParse(_heightController.text);
     double? weightKg = double.tryParse(_weightController.text);
+    int? age = int.tryParse(_ageController.text);
 
     if (heightCm == null || weightKg == null || heightCm <= 0 || weightKg <= 0) {
       _showErrorDialog('Please enter valid height and weight values.');
       return;
     }
 
-    // Convert to meters for calculation
-    double heightM = heightCm / 100;
-    double bmi = weightKg / (heightM * heightM);
-    
-    String category = _getBMICategory(bmi);
+    // Validate age if provided
+    if (age != null && (age < 1 || age > 120)) {
+      _showErrorDialog('Please enter a valid age between 1 and 120.');
+      return;
+    }
+
+    // Update user profile with age and gender
+    await _updateUserProfile(age, _selectedGender);
+
+    // Calculate BMI using the updated utility that includes age and gender
+    double bmi = BMIUtil.calculateBMI(
+      heightCm,
+      weightKg,
+      'cm',
+      'kg',
+      age: age,
+      gender: _selectedGender,
+    );
+
+    // Get age and gender-specific category
+    String category = BMIUtil.getAgeGenderBMICategory(bmi, age, _selectedGender);
     Color riskColor = _getRiskColor(category);
     String riskIndicator = _getRiskIndicator(category);
 
@@ -86,23 +123,32 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> with WidgetsB
       heightUnit: 'cm',
       weightUnit: 'kg',
     );
-    
+
     // Also store the current BMI for persistent display
-    await _saveCurrentBMI(bmi, category, heightCm, weightKg, riskIndicator);
+    await _saveCurrentBMI(bmi, category, heightCm, weightKg, riskIndicator, age, _selectedGender);
 
     setState(() {
       _bmiValue = double.parse(bmi.toStringAsFixed(1));
       _bmiCategory = category;
       _riskColor = riskColor;
       _riskIndicator = riskIndicator;
+      _userAge = age;
     });
 
     // Show success message
     _showSuccessDialog('BMI result saved to your history!');
-    
+
     // Emit event to notify other screens that BMI was calculated
     print('DEBUG: Emitting BMI calculated event');
     EventBus.instance.emit(Events.bmiCalculated);
+  }
+
+  // Update user profile with age and gender
+  Future<void> _updateUserProfile(int? age, String? gender) async {
+    await BMIStorageService.saveUserProfile(
+      age: age,
+      gender: gender,
+    );
   }
 
   String _getBMICategory(double bmi) {
@@ -113,15 +159,37 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> with WidgetsB
   }
 
   Color _getRiskColor(String category) {
-    if (category == 'Normal') return Colors.green;
-    if (category == 'Underweight' || category == 'Overweight') return Colors.orange;
-    return Colors.red; // Obese
+    switch (category) {
+      case 'Normal':
+      case 'Normal weight':
+      case 'Healthy weight':
+        return const Color(0xFF2E7D32); // Dark Green - very healthy
+      case 'Underweight':
+        return const Color(0xFF1565C0); // Deep Blue - concerning but not critical
+      case 'Overweight':
+        return const Color(0xFFF57C00); // Deep Orange - warning level
+      case 'Obese':
+        return const Color(0xFFC62828); // Dark Red - serious health risk
+      default:
+        return Colors.grey[600]!;
+    }
   }
 
   String _getRiskIndicator(String category) {
-    if (category == 'Normal') return 'Green = healthy';
-    if (category == 'Underweight' || category == 'Overweight') return 'Yellow = caution';
-    return 'Red = high risk'; // Obese
+    switch (category) {
+      case 'Normal':
+      case 'Normal weight':
+      case 'Healthy weight':
+        return '✓ Healthy Weight';
+      case 'Underweight':
+        return '⚠ Underweight - Health Risk';
+      case 'Overweight':
+        return '⚠ Overweight - Health Concern';
+      case 'Obese':
+        return '🚨 Obese - Serious Health Risk';
+      default:
+        return 'Unknown Category';
+    }
   }
 
   void _showErrorDialog(String message) {
@@ -177,7 +245,7 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> with WidgetsB
   }
   
   // Save current BMI for persistent display
-  Future<void> _saveCurrentBMI(double bmi, String category, double height, double weight, String riskIndicator) async {
+  Future<void> _saveCurrentBMI(double bmi, String category, double height, double weight, String riskIndicator, int? age, String? gender) async {
     try {
       await BMIStorageService.saveCurrentBMI(
         bmi: bmi,
@@ -186,6 +254,8 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> with WidgetsB
         weight: weight,
         riskIndicator: riskIndicator,
         date: DateTime.now().toIso8601String(),
+        age: age,
+        gender: gender,
       );
     } catch (e) {
       // If saving current BMI fails, we still want the calculation to work
@@ -248,54 +318,8 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> with WidgetsB
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: Constants.extraLargeSpacing),
-              Card(
-                elevation: Constants.cardElevation,
-                child: Padding(
-                  padding: const EdgeInsets.all(Constants.standardPadding * 1.25),
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: _weightController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Weight (kg)',
-                          hintText: 'Enter your weight in kg',
-                          prefixIcon: Icon(Icons.monitor_weight),
-                        ),
-                      ),
-                      const SizedBox(height: Constants.mediumSpacing),
-                      TextField(
-                        controller: _heightController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Height (cm)',
-                          hintText: 'Enter your height in cm',
-                          prefixIcon: Icon(Icons.height),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: Constants.largeSpacing),
-              ElevatedButton(
-                onPressed: _calculateBMI,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                ),
-                child: const Text(
-                  'Calculate BMI',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              const SizedBox(height: Constants.extraLargeSpacing),
+
+              // BMI Result Card - shown above input fields when BMI is calculated
               if (_bmiValue != null) ...[
                 Container(
                   padding: const EdgeInsets.all(Constants.standardPadding * 1.5),
@@ -307,7 +331,7 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> with WidgetsB
                   child: Column(
                     children: [
                       Text(
-                        'Your BMI',
+                        'Your BMI Result',
                         style: TextStyle(
                           fontSize: 20,
                           color: _riskColor,
@@ -351,6 +375,98 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> with WidgetsB
                   ),
                 ),
                 const SizedBox(height: Constants.largeSpacing),
+              ],
+
+              // Input Card
+              Card(
+                elevation: Constants.cardElevation,
+                child: Padding(
+                  padding: const EdgeInsets.all(Constants.standardPadding * 1.25),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: _weightController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Weight (kg)',
+                          hintText: 'Enter your weight in kg',
+                          prefixIcon: Icon(Icons.monitor_weight),
+                        ),
+                      ),
+                      const SizedBox(height: Constants.mediumSpacing),
+                      TextField(
+                        controller: _heightController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Height (cm)',
+                          hintText: 'Enter your height in cm',
+                          prefixIcon: Icon(Icons.height),
+                        ),
+                      ),
+                      const SizedBox(height: Constants.mediumSpacing),
+                      TextField(
+                        controller: _ageController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Age (optional)',
+                          hintText: 'Enter your age',
+                          prefixIcon: Icon(Icons.cake),
+                        ),
+                      ),
+                      const SizedBox(height: Constants.mediumSpacing),
+                      DropdownButtonFormField<String>(
+                        value: _selectedGender,
+                        decoration: const InputDecoration(
+                          labelText: 'Gender (optional)',
+                          hintText: 'Select your gender',
+                          prefixIcon: Icon(Icons.person),
+                        ),
+                        items: const [
+                          DropdownMenuItem<String>(
+                            value: null,
+                            child: Text('Prefer not to say'),
+                          ),
+                          DropdownMenuItem<String>(
+                            value: 'Male',
+                            child: Text('Male'),
+                          ),
+                          DropdownMenuItem<String>(
+                            value: 'Female',
+                            child: Text('Female'),
+                          ),
+                        ],
+                        onChanged: (String? value) {
+                          setState(() {
+                            _selectedGender = value;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: Constants.largeSpacing),
+              ElevatedButton(
+                onPressed: _calculateBMI,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                ),
+                child: const Text(
+                  'Calculate BMI',
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: Constants.largeSpacing),
+
+              // Reset Button - only show when BMI is calculated
+              if (_bmiValue != null) ...[
                 ElevatedButton.icon(
                   onPressed: () {
                     setState(() {
@@ -360,6 +476,9 @@ class _BMICalculatorScreenState extends State<BMICalculatorScreen> with WidgetsB
                       _riskIndicator = null;
                       _weightController.clear();
                       _heightController.clear();
+                      _ageController.clear();
+                      _selectedGender = null;
+                      _userAge = null;
                     });
                     _clearCurrentBMI();
                   },

@@ -10,6 +10,8 @@ class BMIHistoryManager {
     required String category,
     required double height,
     required double weight,
+    int? age,
+    String? gender,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final List<String> history = prefs.getStringList(_historyKey) ?? <String>[];
@@ -21,11 +23,13 @@ class BMIHistoryManager {
       'category': category,
       'height': height,
       'weight': weight,
+      if (age != null) 'age': age,
+      if (gender != null) 'gender': gender,
     };
 
     // Convert to JSON string and add to the beginning of the list
     history.insert(0, jsonEncode(record));
-    
+
     // Keep only the last 50 records to prevent storage bloat
     if (history.length > 50) {
       history.removeRange(50, history.length);

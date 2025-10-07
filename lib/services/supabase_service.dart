@@ -59,6 +59,24 @@ class SupabaseService {
     return _client.auth.currentUser;
   }
 
+  // Get the current user's display name or email
+  String? getCurrentUserName() {
+    final user = _client.auth.currentUser;
+    if (user == null) return null;
+
+    // Try to get display name first, then fall back to email
+    String? name = user.userMetadata?['display_name'] ??
+                   user.userMetadata?['name'] ??
+                   user.userMetadata?['full_name'];
+
+    if (name != null && name.isNotEmpty) {
+      return name;
+    }
+
+    // Fall back to email if no name is found
+    return user.email?.split('@')[0]; // Return the part before @ for a cleaner name
+  }
+
   // Save BMI result to Supabase database
   Future<void> saveBMIResult({
     required double bmiValue,
@@ -67,6 +85,8 @@ class SupabaseService {
     required double weight,
     required String heightUnit,
     required String weightUnit,
+    int? age,
+    String? gender,
   }) async {
     try {
       final user = _client.auth.currentUser;
@@ -74,9 +94,7 @@ class SupabaseService {
         throw Exception('User not authenticated');
       }
 
-      await _client
-          .from('bmi_records') // This is the table name in your Supabase database
-          .insert({
+      final recordData = {
         'user_id': user.id,
         'bmi_value': bmiValue,
         'category': category,
@@ -85,7 +103,13 @@ class SupabaseService {
         'height_unit': heightUnit,
         'weight_unit': weightUnit,
         'created_at': DateTime.now().toIso8601String(),
-      });
+        if (age != null) 'age': age,
+        if (gender != null) 'gender': gender,
+      };
+
+      await _client
+          .from('bmi_records') // This is the table name in your Supabase database
+          .insert(recordData);
     } catch (e) {
       throw Exception('Failed to save BMI result: $e');
     }

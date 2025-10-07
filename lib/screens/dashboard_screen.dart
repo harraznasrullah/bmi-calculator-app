@@ -7,6 +7,8 @@ import 'package:bmi_calc/utils/event_bus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:bmi_calc/services/supabase_service.dart';
 import 'package:bmi_calc/services/sync_service.dart';
+import 'package:bmi_calc/services/bmi_storage_service.dart';
+import 'package:bmi_calc/utils/bmi_util.dart';
 
 // Dashboard Screen Widget
 // This screen displays the user's BMI, health tips based on their BMI, and their name
@@ -23,6 +25,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   double bmiValue = 0; // Initial BMI value (0 means empty)
   String bmiCategory = ''; // Initial BMI category (empty)
   String userName = 'Guest'; // Default user name
+  int? userAge;
+  String? userGender;
 
   StreamSubscription<String>? _eventSubscription;
   StreamSubscription<AuthState>? _authSubscription;
@@ -32,6 +36,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     super.initState();
     _loadLatestBMI();
     _loadUserName(); // Load the user's name
+    _loadUserProfile(); // Load user's age and gender
     WidgetsBinding.instance.addObserver(this);
     
     // Listen for BMI calculation, login, logout, and sync events
@@ -78,7 +83,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
             .select('username, full_name')
             .eq('id', user.id)
             .single();
-        
+
         if (response != null) {
           final userData = response as Map<String, dynamic>;
           final username = userData['username'] ?? userData['full_name'] ?? (user.email != null ? user.email!.split('@')[0] : null);
@@ -105,6 +110,22 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     }
   }
 
+  // Load user profile (age and gender)
+  Future<void> _loadUserProfile() async {
+    try {
+      final profile = await BMIStorageService.loadUserProfile();
+      if (profile != null) {
+        setState(() {
+          userAge = profile['age']?.toInt();
+          userGender = profile['gender'];
+        });
+      }
+    } catch (e) {
+      // Error loading profile - continue with null values
+      print('Error loading user profile: $e');
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -118,7 +139,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     try {
       print('DEBUG: Dashboard loading latest BMI...');
       // Use sync service for offline-first BMI history
-      final records = await SyncService.getBMIHistoryWithSync();
+      final records = await SyncService.getBMIHistoryWithSync(prioritizeLatest: true);
       print('DEBUG: Dashboard found ${records.length} records');
 
       if (records.isNotEmpty) {
@@ -167,18 +188,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   
   // Health tips based on BMI category
   String getHealthTips(String category) {
-    switch (category) {
-      case 'Underweight':
-        return 'You might benefit from increasing your calorie intake with nutritious foods and regular strength training. Focus on protein-rich foods like chicken, fish, beans, and dairy products to help you gain healthy weight.';
-      case 'Normal':
-        return 'Great job! Maintain your healthy weight with balanced nutrition and regular exercise. Consider adding variety to your workouts to keep things interesting and challenging.';
-      case 'Overweight':
-        return 'Consider incorporating more physical activity and a balanced diet to reach a healthier weight. Start with small changes like taking daily walks and reducing portion sizes.';
-      case 'Obese':
-        return 'Consult with a healthcare professional to create a personalized plan for weight management and improved health. Small, sustainable changes can lead to significant improvements over time.';
-      default:
-        return 'Maintain a healthy lifestyle with balanced nutrition and regular exercise. Remember that progress takes time, so be patient and consistent with your efforts.';
-    }
+    // Use the new BMIUtil for age and gender-specific recommendations
+    return BMIUtil.getHealthRecommendations(bmiValue, userAge, userGender);
   }
 
   @override
@@ -216,6 +227,66 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                     ),
                   ),
                 ),
+                const SizedBox(height: 10),
+
+                // User profile information with animation
+                if (userAge != null || userGender != null)
+                  FadeInDown(
+                    key: const ValueKey('profile-animation'),
+                    duration: const Duration(milliseconds: 800),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (userAge != null) ...[
+                            Icon(Icons.cake, size: 16, color: Theme.of(context).colorScheme.primary),
+                            const SizedBox(width: 4),
+                            Text(
+                              '$userAge years',
+                              style: GoogleFonts.lato(
+                                fontSize: 14,
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                          if (userAge != null && userGender != null) ...[
+                            const SizedBox(width: 12),
+                            Container(
+                              width: 4,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                          ],
+                          if (userGender != null) ...[
+                            Icon(
+                              userGender?.toLowerCase() == 'male' ? Icons.male : Icons.female,
+                              size: 16,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              userGender!,
+                              style: GoogleFonts.lato(
+                                fontSize: 14,
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 20),
                 
                 // BMI display card - now pressable
@@ -404,13 +475,13 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   // Helper function to get color based on BMI value
   Color getColorForBMI(double bmi) {
     if (bmi < 18.5) {
-      return Colors.blue; // Underweight
+      return const Color(0xFF1565C0); // Deep Blue - underweight (concerning)
     } else if (bmi < 25) {
-      return Colors.green; // Normal
+      return const Color(0xFF2E7D32); // Dark Green - normal (healthy)
     } else if (bmi < 30) {
-      return Colors.orange; // Overweight
+      return const Color(0xFFF57C00); // Deep Orange - overweight (warning)
     } else {
-      return Colors.red; // Obese
+      return const Color(0xFFC62828); // Dark Red - obese (serious risk)
     }
   }
 

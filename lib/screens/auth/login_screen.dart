@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:bmi_calc/screens/auth/signup_screen.dart';
 import 'package:bmi_calc/services/supabase_service.dart';
 import 'package:bmi_calc/services/sync_service.dart';
@@ -46,15 +47,15 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (mounted) {
-        // Navigate back to previous screen with success
-        Navigator.of(context).pop();
-        // Optionally show a success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Login successful!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        // Check if there's local BMI data to transfer
+        final hasLocalData = await SyncService.hasLocalBMIData();
+        if (hasLocalData) {
+          final localDataCount = await SyncService.getLocalBMIDataCount();
+          _showBMIDataTransferDialog(localDataCount);
+        } else {
+          // No local data, just show success and navigate
+          _completeLogin();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -198,5 +199,132 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
+  }
+
+  void _showBMIDataTransferDialog(int localDataCount) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Prevent user from dismissing by tapping outside
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.sync, color: Colors.blue[600], size: 24),
+              const SizedBox(width: 8),
+              Text('Transfer BMI Data?'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'We found $localDataCount BMI record${localDataCount > 1 ? 's' : ''} from your previous use of the app.',
+                style: GoogleFonts.lato(fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Would you like to transfer these records to your account? This will:',
+                style: GoogleFonts.lato(fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 8),
+              ...[
+                '✓ Add your BMI history to this account',
+                '✓ Make your data available on all devices',
+                '✓ Keep your data safe in the cloud'
+              ].map((item) => Padding(
+                padding: const EdgeInsets.only(left: 8, top: 4),
+                child: Text(
+                  item,
+                  style: GoogleFonts.lato(fontSize: 13, color: Colors.grey[700]),
+                ),
+              )),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber[50],
+                  border: Border.all(color: Colors.amber[200]!),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.amber[700], size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Local data will be removed after successful transfer',
+                        style: GoogleFonts.lato(
+                          fontSize: 12,
+                          color: Colors.amber[800],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _completeLogin(); // Continue without transferring
+              },
+              child: Text(
+                'Skip Transfer',
+                style: GoogleFonts.lato(color: Colors.grey[600]),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                // Close the dialog first
+                Navigator.of(context).pop();
+
+                // Perform transfer in background without blocking UI
+                unawaited(_performDataTransfer(localDataCount));
+
+                // Complete login immediately
+                _completeLogin();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[600],
+                foregroundColor: Colors.white,
+              ),
+              child: Text(
+                'Transfer Data',
+                style: GoogleFonts.lato(fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _completeLogin() {
+    if (mounted) {
+      // Navigate back to previous screen with success
+      Navigator.of(context).pop();
+      // Optionally show a success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Login successful!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
+  // Background data transfer method that doesn't block UI
+  Future<void> _performDataTransfer(int localDataCount) async {
+    try {
+      final success = await SyncService.transferLocalBMIDataToAccount();
+      // Transfer completed - you could emit an event here if needed
+      print('Background transfer completed: $success, transferred $localDataCount records');
+    } catch (e) {
+      // Transfer failed - log error but don't hang the app
+      print('Background transfer failed: $e');
+    }
   }
 }
